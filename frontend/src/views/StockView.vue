@@ -303,7 +303,9 @@ async function doDelete() {
   finally { saving.value = false }
 }
 
-function flash(msg) { successMsg.value = msg; setTimeout(() => { successMsg.value = '' }, 3000) }
+import { useToast } from '@/composables/useToast'
+const { success, error: toastError } = useToast()
+// puis : success('Article créé.') / toastError('Erreur.')
 onMounted(fetchAll)
 </script>
 

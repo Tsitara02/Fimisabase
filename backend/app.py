@@ -81,32 +81,26 @@ def me():
 @require_auth
 def dashboard_stats():
     try:
-        # Bénéficiaires total + genre
         benef = supabase.table("beneficiaire").select("id_beneficiaire, genre").execute()
         total_benef = len(benef.data)
         femmes = sum(1 for b in benef.data if b.get("genre", "").strip().upper() == "F")
         hommes = total_benef - femmes
 
-        # Fournisseurs AMI agréés
         fourn = supabase.table("fournisseur_ami").select("id_fournisseur, statut_agree").execute()
         total_fourn = len(fourn.data)
         agrees = sum(1 for f in fourn.data if f.get("statut_agree") is True)
 
-        # Bons de commande
         bc = supabase.table("bon_commande").select("statut_validation, montant_total").execute()
         total_bc = len(bc.data)
         bc_valides = sum(1 for b in bc.data if b.get("statut_validation", "").lower() == "validé")
         budget_total = sum(float(b.get("montant_total") or 0) for b in bc.data)
 
-        # Distributions
         dist = supabase.table("fiche_distribution").select("id_fiche_distribution").execute()
         total_dist = len(dist.data)
 
-        # Articles en alerte de stock
         alertes = supabase.table("vue_alertes_stock_critique").select("*").execute()
         nb_alertes = len(alertes.data)
 
-        # Stock articles
         articles = supabase.table("article").select("quantite_en_stock, seuil_alerte").execute()
         total_articles = len(articles.data)
 
@@ -146,10 +140,9 @@ def alertes_stock_dashboard():
 @require_auth
 def get_fournisseurs():
     try:
-        search = request.args.get("q", "")
-        query = supabase.table("fournisseur_ami").select("*").order("raison_sociale")
-        res = query.execute()
+        res = supabase.table("fournisseur_ami").select("*").order("raison_sociale").execute()
         data = res.data
+        search = request.args.get("q", "")
         if search:
             s = search.lower()
             data = [f for f in data if s in f.get("raison_sociale", "").lower()
@@ -172,8 +165,7 @@ def get_fournisseur(id_f):
 @require_auth
 def create_fournisseur():
     data = request.json
-    required = ["raison_sociale", "lots_soumissionnes"]
-    missing_f = [k for k in required if not data.get(k)]
+    missing_f = [k for k in ["raison_sociale", "lots_soumissionnes"] if not data.get(k)]
     if missing_f:
         return jsonify({"error": f"Champs requis : {', '.join(missing_f)}"}), 400
     try:
@@ -227,8 +219,7 @@ def get_article(id_a):
 @require_auth
 def create_article():
     data = request.json
-    required = ["designation", "unite_mesure"]
-    missing_a = [k for k in required if not data.get(k)]
+    missing_a = [k for k in ["designation", "unite_mesure"] if not data.get(k)]
     if missing_a:
         return jsonify({"error": f"Champs requis : {', '.join(missing_a)}"}), 400
     try:
@@ -260,7 +251,6 @@ def delete_article(id_a):
 @app.route("/api/articles/<id_a>/ajuster-stock", methods=["POST"])
 @require_auth
 def ajuster_stock(id_a):
-    """Ajuste le stock : delta positif = entrée, négatif = sortie."""
     data = request.json
     delta = int(data.get("delta", 0))
     try:
@@ -268,6 +258,147 @@ def ajuster_stock(id_a):
         nouvelle_qte = max(0, (art.data.get("quantite_en_stock") or 0) + delta)
         res = supabase.table("article").update({"quantite_en_stock": nouvelle_qte}).eq("id_article", id_a).execute()
         return jsonify(res.data[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Bons de Commande ─────────────────────────────────────────────────────────
+
+@app.route("/api/bons-commande", methods=["GET"])
+@require_auth
+def get_bons_commande():
+    try:
+        res = supabase.table("bon_commande") \
+            .select("*, fournisseur_ami(raison_sociale), activite_cadre_logique(code_activite,description)") \
+            .order("date_commande", desc=True).execute()
+        return jsonify(res.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/bons-commande/<id_bc>", methods=["GET"])
+@require_auth
+def get_bon_commande(id_bc):
+    try:
+        bc = supabase.table("bon_commande") \
+            .select("*, fournisseur_ami(raison_sociale), activite_cadre_logique(code_activite,description)") \
+            .eq("id_bon_commande", id_bc).single().execute()
+        lignes = supabase.table("ligne_commande") \
+            .select("*").eq("id_bon_commande", id_bc).execute()
+        return jsonify({**bc.data, "lignes": lignes.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
+
+@app.route("/api/bons-commande", methods=["POST"])
+@require_auth
+def create_bon_commande():
+    data = request.json
+    lignes = data.pop("lignes", [])
+    if not data.get("numero_bc"):
+        return jsonify({"error": "numero_bc requis"}), 400
+    try:
+        montant_total = sum(
+            float(l.get("prix_unitaire", 0)) * int(l.get("quantite_commandee", 0))
+            for l in lignes
+        )
+        data["montant_total"] = montant_total
+        data.setdefault("statut_validation", "en_attente")
+        bc = supabase.table("bon_commande").insert(data).execute()
+        id_bc = bc.data[0]["id_bon_commande"]
+        if lignes:
+            for l in lignes:
+                l["id_bon_commande"] = id_bc
+                l["prix_total"] = float(l.get("prix_unitaire", 0)) * int(l.get("quantite_commandee", 0))
+            supabase.table("ligne_commande").insert(lignes).execute()
+        return jsonify({**bc.data[0], "lignes": lignes}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/bons-commande/<id_bc>", methods=["PUT"])
+@require_auth
+def update_bon_commande(id_bc):
+    data = request.json
+    lignes = data.pop("lignes", None)
+    data.pop("id_bon_commande", None)
+    # Supprimer les clés de jointure retournées par Supabase
+    data.pop("fournisseur_ami", None)
+    data.pop("activite_cadre_logique", None)
+    try:
+        if lignes is not None:
+            montant_total = sum(
+                float(l.get("prix_unitaire", 0)) * int(l.get("quantite_commandee", 0))
+                for l in lignes
+            )
+            data["montant_total"] = montant_total
+        bc = supabase.table("bon_commande").update(data).eq("id_bon_commande", id_bc).execute()
+        if lignes is not None:
+            supabase.table("ligne_commande").delete().eq("id_bon_commande", id_bc).execute()
+            for l in lignes:
+                l["id_bon_commande"] = id_bc
+                l.pop("id_ligne_bc", None)
+                l["prix_total"] = float(l.get("prix_unitaire", 0)) * int(l.get("quantite_commandee", 0))
+            if lignes:
+                supabase.table("ligne_commande").insert(lignes).execute()
+        return jsonify(bc.data[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/bons-commande/<id_bc>/valider", methods=["POST"])
+@require_auth
+def valider_bon_commande(id_bc):
+    data = request.json
+    statut = data.get("statut")
+    if statut not in ["validé", "refusé"]:
+        return jsonify({"error": "statut invalide — utiliser 'validé' ou 'refusé'"}), 400
+    try:
+        update = {"statut_validation": statut}
+        res = supabase.table("bon_commande").update(update).eq("id_bon_commande", id_bc).execute()
+        return jsonify(res.data[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/bons-commande/<id_bc>", methods=["DELETE"])
+@require_auth
+def delete_bon_commande(id_bc):
+    try:
+        supabase.table("ligne_commande").delete().eq("id_bon_commande", id_bc).execute()
+        supabase.table("bon_commande").delete().eq("id_bon_commande", id_bc).execute()
+        return jsonify({"message": "BC supprimé"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Selects (listes déroulantes) ─────────────────────────────────────────────
+
+@app.route("/api/select/fournisseurs", methods=["GET"])
+@require_auth
+def select_fournisseurs():
+    try:
+        res = supabase.table("fournisseur_ami") \
+            .select("id_fournisseur,raison_sociale,statut_agree") \
+            .order("raison_sociale").execute()
+        return jsonify(res.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/select/activites", methods=["GET"])
+@require_auth
+def select_activites():
+    try:
+        res = supabase.table("activite_cadre_logique") \
+            .select("id_activite,code_activite,description") \
+            .order("code_activite").execute()
+        return jsonify(res.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/select/personnel", methods=["GET"])
+@require_auth
+def select_personnel():
+    try:
+        res = supabase.table("personnel_fimisa") \
+            .select("id_personnel,nom,prenom,poste_occupe") \
+            .order("nom").execute()
+        return jsonify(res.data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
