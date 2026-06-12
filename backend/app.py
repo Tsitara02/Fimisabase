@@ -8,7 +8,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5173"], supports_credentials=True)
+CORS(
+    app,
+    origins=[
+        "http://localhost:5173",
+        "https://votre-projet.vercel.app"
+    ],
+    supports_credentials=True
+)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY")
