@@ -60,6 +60,7 @@ const navItems = [
   { to: '/dashboard',     icon: '▦',  label: 'Dashboard' },
   { to: '/fournisseurs',  icon: '◉',  label: 'Fournisseurs AMI' },
   { to: '/bons-commande', icon: '📋', label: 'Bons de Commande' },
+  { to: '/pv-reception', icon: '📦', label: 'PV Réception' },
   { to: '/stock',         icon: '⬡',  label: 'Stock & Articles' },
   { to: '/settings',      icon: '⚙',  label: 'Paramètres' },
 ]

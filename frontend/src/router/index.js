@@ -10,6 +10,7 @@ const routes = [
   { path: '/stock',     name: 'Stock',       component: () => import('@/views/StockView.vue'),       meta: { requiresAuth: true } },
   { path: '/settings',  name: 'Settings',    component: () => import('@/views/SettingsView.vue'),    meta: { requiresAuth: true } },
   { path: '/bons-commande', name: 'BonsCommande', component: () => import('@/views/BonsCommandeView.vue'), meta: { requiresAuth: true } },
+  { path: '/pv-reception', name: 'PvReception', component: () => import('@/views/PvReceptionView.vue'), meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
