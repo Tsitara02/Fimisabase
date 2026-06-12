@@ -8,11 +8,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(
+CCORS(
     app,
     origins=[
-        "http://localhost:5173",
-        "https://fimisabase.vercel.app"
+        "http://localhost:5173",          # Pour tes tests en local
+        "https://fimisabase.vercel.app"   # Ton vrai frontend de production Vercel
     ],
     supports_credentials=True
 )
