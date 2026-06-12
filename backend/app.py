@@ -12,7 +12,7 @@ CORS(
     app,
     origins=[
         "http://localhost:5173",
-        "https://votre-projet.vercel.app"
+        "https://fimisabase.vercel.app"
     ],
     supports_credentials=True
 )
